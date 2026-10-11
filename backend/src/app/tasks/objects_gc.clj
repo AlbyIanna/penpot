@@ -19,15 +19,19 @@
    [integrant.core :as ig]))
 
 (defn- submit-hard-delete-event
-  "Emits a hard-delete audit event for a batch of rows just purged by this
-  task, so a projection of the audit stream can drop its local rows. Runs
-  inside the caller transaction, next to the deletes."
-  [cfg event-name ids]
+  "Emits one hard-delete audit event for the batch of rows just purged
+  by this task, so a projection of the audit stream can drop its local
+  rows. Each GC section purges in its own chunk transactions, so each
+  chunk carries only its own entity key (`:team-ids`, `:project-ids`
+  or `:file-ids`); a single event spanning sections could never share
+  their transactions. Runs inside the caller transaction, next to the
+  deletes: if the purge aborts, the event aborts with it."
+  [cfg ids-key ids]
   (when (contains? cf/flags :audit-log)
     (audit/submit cfg
-                  {:name event-name
+                  {:name "hard-delete-objects"
                    :type "command"
-                   :props {:ids (vec ids)}
+                   :props {ids-key (vec ids)}
                    :context {:triggered-by "objects-gc"}})))
 
 (def ^:private sql:get-upload-sessions
@@ -128,7 +132,7 @@
                            (conj ids id))
                          []))]
     (when (seq ids)
-      (submit-hard-delete-event cfg "hard-delete-team" ids))
+      (submit-hard-delete-event cfg :team-ids ids))
     (count ids)))
 
 (def ^:private sql:get-fonts
@@ -184,7 +188,7 @@
                            (conj ids id))
                          []))]
     (when (seq ids)
-      (submit-hard-delete-event cfg "hard-delete-project" ids))
+      (submit-hard-delete-event cfg :project-ids ids))
     (count ids)))
 
 (def ^:private sql:get-files
@@ -212,7 +216,7 @@
                            (conj ids id))
                          []))]
     (when (seq ids)
-      (submit-hard-delete-event cfg "hard-delete-file" ids))
+      (submit-hard-delete-event cfg :file-ids ids))
     (count ids)))
 
 (def ^:private sql:get-file-thumbnails

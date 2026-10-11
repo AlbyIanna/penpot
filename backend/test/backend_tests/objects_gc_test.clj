@@ -25,7 +25,7 @@
   (filter #(= event-name (:name %))
           (submitted-events audit-mock)))
 
-(t/deftest gc-emits-hard-delete-team-event
+(t/deftest gc-emits-hard-delete-objects-for-teams
   ;; When the GC physically deletes a team, the projection must drop its row,
   ;; so the event carries the purged ids.
   (with-mocks [audit-mock {:target 'app.loggers.audit/submit :return nil}]
@@ -41,14 +41,15 @@
         (th/reset-mock! audit-mock)
         (th/run-task! :objects-gc {:skip-delay true})
         (t/is (nil? (th/db-get :team {:id (:id team)})))
-        (let [events (events-named audit-mock "hard-delete-team")]
+        (let [events (filter #(contains? (:props %) :team-ids)
+                             (events-named audit-mock "hard-delete-objects"))]
           (t/is (= 1 (count events)))
           (let [event (first events)]
             (t/is (= "command" (:type event)))
-            (t/is (= [(:id team)] (get-in event [:props :ids])))
+            (t/is (= [(:id team)] (get-in event [:props :team-ids])))
             (t/is (= "objects-gc" (get-in event [:context :triggered-by])))))))))
 
-(t/deftest gc-emits-hard-delete-project-event
+(t/deftest gc-emits-hard-delete-objects-for-projects
   (with-mocks [audit-mock {:target 'app.loggers.audit/submit :return nil}]
     (with-redefs [cf/flags (conj cf/flags :audit-log)]
       (let [profile (th/create-profile* 1 {:is-active true})
@@ -62,14 +63,15 @@
         (th/reset-mock! audit-mock)
         (th/run-task! :objects-gc {:skip-delay true})
         (t/is (nil? (th/db-get :project {:id (:id project)})))
-        (let [events (events-named audit-mock "hard-delete-project")]
+        (let [events (filter #(contains? (:props %) :project-ids)
+                             (events-named audit-mock "hard-delete-objects"))]
           (t/is (= 1 (count events)))
           (let [event (first events)]
             (t/is (= "command" (:type event)))
-            (t/is (= [(:id project)] (get-in event [:props :ids])))
+            (t/is (= [(:id project)] (get-in event [:props :project-ids])))
             (t/is (= "objects-gc" (get-in event [:context :triggered-by])))))))))
 
-(t/deftest gc-emits-hard-delete-file-event
+(t/deftest gc-emits-hard-delete-objects-for-files
   (with-mocks [audit-mock {:target 'app.loggers.audit/submit :return nil}]
     (with-redefs [cf/flags (conj cf/flags :audit-log)]
       (let [profile (th/create-profile* 1 {:is-active true})
@@ -85,11 +87,12 @@
         (th/reset-mock! audit-mock)
         (th/run-task! :objects-gc {:skip-delay true})
         (t/is (nil? (th/db-get :file {:id (:id file)})))
-        (let [events (events-named audit-mock "hard-delete-file")]
+        (let [events (filter #(contains? (:props %) :file-ids)
+                             (events-named audit-mock "hard-delete-objects"))]
           (t/is (= 1 (count events)))
           (let [event (first events)]
             (t/is (= "command" (:type event)))
-            (t/is (= [(:id file)] (get-in event [:props :ids])))
+            (t/is (= [(:id file)] (get-in event [:props :file-ids])))
             (t/is (= "objects-gc" (get-in event [:context :triggered-by])))))))))
 
 (t/deftest gc-emits-no-event-without-audit-log-flag
